@@ -1,292 +1,141 @@
-<!DOCTYPE html>
-<html lang="sv">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Blomdetektor – AI Klassificering</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --primary: #6c5ce7;
-            --primary-dark: #5649c0;
-            --success: #00b894;
-            --danger: #e74c3c;
-            --light: #f5f6fa;
-            --dark: #2d3436;
-            --gray: #636e72;
+<script>
+    const MODEL_URL = 'https://raw.githubusercontent.com/masaok/flowerid-next/main/public/tfjs_model/model.json';
+    const CLASSES = ['daisy', 'dandelion', 'roses', 'sunflowers', 'tulips'];
+
+    let model = null;
+    const status = document.getElementById('status');
+    const uploadArea = document.getElementById('uploadArea');
+    const imageUpload = document.getElementById('imageUpload');
+    const previewContainer = document.getElementById('preview-container');
+    const preview = document.getElementById('preview');
+    const result = document.getElementById('result');
+    const uploadBtn = document.querySelector('.upload-btn');
+
+    function setStatus(text, type = '') {
+        status.textContent = text;
+        status.className = type;
+    }
+
+    async function loadModel() {
+        try {
+            setStatus('Laddar AI-modellen... 🌷', 'loading');
+            model = await tf.loadGraphModel(MODEL_URL);
+            setStatus('Modellen är klar! Ladda upp en blomma 💐', 'success');
+        } catch (err) {
+            setStatus('Kunde inte ladda modellen: ' + err.message, 'error');
+            console.error(err);
+        }
+    }
+
+    function preprocess(img) {
+        return tf.browser.fromPixels(img)
+            .resizeNearestNeighbor([224, 224])
+            .toFloat()
+            .div(255.0)
+            .expandDims();
+    }
+
+    // Hjälpfunktion: softmax om det behövs (säkerställer [0,1] och summa ≈ 1)
+    function softmax(arr) {
+        const max = Math.max(...arr);
+        const exps = arr.map(x => Math.exp(x - max));
+        const sum = exps.reduce((a, b) => a + b, 0);
+        return exps.map(x => x / sum);
+    }
+
+    async function predictImage(imgElement) {
+        if (!model) {
+            result.textContent = 'Modellen laddas fortfarande...';
+            result.style.display = 'block';
+            return;
         }
 
-        * { margin:0; padding:0; box-sizing:border-box; }
+        try {
+            const tensor = preprocess(imgElement);
+            const outputTensor = await model.executeAsync(tensor);
+            tensor.dispose();
 
-        body {
-            font-family: 'Poppins', sans-serif;
-            background: linear-gradient(135deg, #f0f4ff 0%, #e0eaff 100%);
-            color: var(--dark);
-            min-height: 100vh;
-            padding: 20px 15px;
-            line-height: 1.6;
-        }
-
-        .container {
-            max-width: 700px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.08);
-            overflow: hidden;
-        }
-
-        header {
-            background: var(--primary);
-            color: white;
-            padding: 2.5rem 2rem;
-            text-align: center;
-        }
-
-        header h1 { font-size: 2.2rem; margin-bottom: 0.5rem; }
-        header p { opacity: 0.9; font-size: 1.05rem; }
-
-        .content { padding: 2.5rem 2rem; }
-
-        #status {
-            background: var(--light);
-            border-radius: 12px;
-            padding: 1.2rem;
-            margin-bottom: 2rem;
-            font-weight: 500;
-            text-align: center;
-            border: 1px solid #dfe6e9;
-            transition: all 0.3s ease;
-        }
-
-        #status.loading { background: #fff3cd; color: #856404; }
-        #status.success { background: #d4edda; color: #155724; border-color: #c3e6cb; }
-        #status.error   { background: #f8d7da; color: #721c24; border-color: #f5c6cb; }
-
-        .upload-area {
-            border: 3px dashed #a29bfe;
-            border-radius: 16px;
-            padding: 3rem 1.5rem;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-bottom: 1.5rem;
-            background: rgba(108, 92, 231, 0.03);
-        }
-
-        .upload-area:hover { border-color: var(--primary); background: rgba(108, 92, 231, 0.08); transform: translateY(-3px); }
-        .upload-area.dragover { border-color: var(--primary); background: rgba(108, 92, 231, 0.15); box-shadow: 0 0 15px rgba(108, 92, 231, 0.3); }
-
-        #imageUpload { display: none; }
-
-        .upload-text { font-size: 1.2rem; color: var(--gray); margin: 1rem 0; }
-
-        .upload-btn {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 0.9rem 2rem;
-            border-radius: 50px;
-            font-size: 1.05rem;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-top: 1rem;
-        }
-
-        .upload-btn:hover { background: var(--primary-dark); transform: translateY(-2px); }
-
-        #preview-container { margin: 2rem 0; text-align: center; display: none; }
-
-        #preview {
-            max-width: 100%;
-            max-height: 380px;
-            border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.12);
-            border: 8px solid white;
-        }
-
-        #result {
-            margin-top: 2rem;
-            padding: 1.8rem;
-            background: var(--light);
-            border-radius: 16px;
-            font-size: 1.3rem;
-            text-align: center;
-            font-weight: 600;
-            border-left: 6px solid var(--primary);
-            display: none;
-        }
-
-        #result strong { color: var(--primary); font-size: 1.6rem; }
-
-        footer {
-            text-align: center;
-            padding: 1.8rem;
-            color: var(--gray);
-            font-size: 0.95rem;
-            border-top: 1px solid #eee;
-        }
-
-        @media (max-width: 600px) {
-            header h1 { font-size: 1.8rem; }
-            .content { padding: 2rem 1.5rem; }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Blomdetektor 🌸</h1>
-            <p>Ladda upp en bild – AI:n berättar vilken blomma det är!</p>
-        </header>
-
-        <div class="content">
-            <div id="status">Laddar modell... Växla tålamod aktiverat 🌱</div>
-
-            <div class="upload-area" id="uploadArea">
-                <input type="file" id="imageUpload" accept="image/*">
-                <div class="upload-text">
-                    Dra & släpp en bild här<br>eller
-                </div>
-                <button type="button" class="upload-btn">Välj bild från datorn</button>
-            </div>
-
-            <div id="preview-container">
-                <img id="preview" src="" alt="Uppladdad blomma">
-            </div>
-
-            <div id="result"></div>
-        </div>
-
-        <footer>
-            Skapad av Grok X. xAI
-        </footer>
-    </div>
-
-    <script>
-        const MODEL_URL = 'https://raw.githubusercontent.com/masaok/flowerid-next/main/public/tfjs_model/model.json';
-        const CLASSES = ['daisy', 'dandelion', 'roses', 'sunflowers', 'tulips'];
-
-        let model = null;
-        const status = document.getElementById('status');
-        const uploadArea = document.getElementById('uploadArea');
-        const imageUpload = document.getElementById('imageUpload');
-        const previewContainer = document.getElementById('preview-container');
-        const preview = document.getElementById('preview');
-        const result = document.getElementById('result');
-        const uploadBtn = document.querySelector('.upload-btn');
-
-        function setStatus(text, type = '') {
-            status.textContent = text;
-            status.className = type; // '', 'loading', 'success', 'error'
-        }
-
-        async function loadModel() {
-            try {
-                setStatus('Laddar AI-modellen... 🌷', 'loading');
-                // Ändring här: loadGraphModel istället för loadLayersModel
-                model = await tf.loadGraphModel(MODEL_URL);
-                setStatus('Modellen är klar! Ladda upp en blomma 💐', 'success');
-            } catch (err) {
-                setStatus('Kunde inte ladda modellen: ' + err.message, 'error');
-                console.error(err);
-            }
-        }
-
-        function preprocess(img) {
-            return tf.browser.fromPixels(img)
-                .resizeNearestNeighbor([224, 224])
-                .toFloat()
-                .div(255.0)
-                .expandDims();
-        }
-
-        async function predictImage(imgElement) {
-            if (!model) {
-                result.textContent = 'Modellen laddas fortfarande...';
-                result.style.display = 'block';
-                return;
+            let rawPreds;
+            if (Array.isArray(outputTensor)) {
+                rawPreds = await outputTensor[0].data();
+                outputTensor.forEach(t => t.dispose());
+            } else {
+                rawPreds = await outputTensor.data();
+                outputTensor.dispose();
             }
 
-            try {
-                const tensor = preprocess(imgElement);
-                const preds = await model.executeAsync(tensor);  // ← Ändring: executeAsync för graph models
-                tensor.dispose();
+            // Konvertera till array + applicera softmax (säkerhetsåtgärd)
+            const probs = softmax(Array.from(rawPreds));
 
-                // För graph models returnerar executeAsync ofta en tensor eller array av tensors
-                // Anta att utdata är en tensor med shape [1, 5] → ta första batchen
-                let predData;
-                if (Array.isArray(preds)) {
-                    predData = await preds[0].data();  // ta första utdatan om flera
-                    preds.forEach(t => t.dispose());
-                } else {
-                    predData = await preds.data();
-                    preds.dispose();
+            console.log('Sannolikheter för varje klass:', probs.map(p => (p * 100).toFixed(1) + '%'));
+
+            // Hitta högsta
+            let maxProb = -1;
+            let bestIndex = -1;
+            probs.forEach((p, i) => {
+                if (p > maxProb) {
+                    maxProb = p;
+                    bestIndex = i;
                 }
+            });
 
-                let maxProb = -1;
-                let bestClass = -1;
-                for (let i = 0; i < predData.length; i++) {
-                    if (predData[i] > maxProb) {
-                        maxProb = predData[i];
-                        bestClass = i;
-                    }
-                }
+            const confidence = (maxProb * 100).toFixed(1);
+            const flower = CLASSES[bestIndex];
 
-                const confidence = (maxProb * 100).toFixed(1);
-                const flower = CLASSES[bestClass];
+            // Visa även alla procent i resultatet (bra för debugging)
+            const allProbs = probs.map((p, i) => `${CLASSES[i]}: ${(p*100).toFixed(0)}%`).join(' | ');
 
-                result.innerHTML = `Det här är en <strong>${flower}</strong><br>med ${confidence}% säkerhet 🌼`;
-                result.style.display = 'block';
-            } catch (err) {
-                result.textContent = 'Något gick fel vid förutsägelsen: ' + err.message;
-                result.style.display = 'block';
-                console.error(err);
-            }
+            result.innerHTML = `
+                Det här är en <strong>${flower}</strong><br>
+                med ${confidence}% säkerhet 🌼<br>
+                <small style="color:#666; font-size:0.9rem;">(${allProbs})</small>
+            `;
+            result.style.display = 'block';
+
+        } catch (err) {
+            result.textContent = 'Fel vid förutsägelse: ' + err.message;
+            result.style.display = 'block';
+            console.error(err);
+        }
+    }
+
+    function handleFiles(files) {
+        if (!files?.length) return;
+        const file = files[0];
+        if (!file.type.startsWith('image/')) {
+            alert('Välj en bild tack!');
+            return;
         }
 
-        function handleFiles(files) {
-            if (!files || files.length === 0) return;
-            const file = files[0];
-            if (!file.type.startsWith('image/')) {
-                alert('Välj en bild tack!');
-                return;
-            }
+        const reader = new FileReader();
+        reader.onload = e => {
+            preview.src = e.target.result;
+            previewContainer.style.display = 'block';
 
-            const reader = new FileReader();
-            reader.onload = e => {
-                preview.src = e.target.result;
-                previewContainer.style.display = 'block';
+            const img = new Image();
+            img.onload = () => predictImage(img);
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
 
-                const img = new Image();
-                img.onload = () => predictImage(img);
-                img.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
-        }
+    // Events (oförändrade)
+    uploadArea.addEventListener('click', () => imageUpload.click());
+    uploadBtn.addEventListener('click', () => imageUpload.click());
+    imageUpload.addEventListener('change', e => handleFiles(e.target.files));
 
-        // Events
-        uploadArea.addEventListener('click', () => imageUpload.click());
-        uploadBtn.addEventListener('click', () => imageUpload.click());
+    uploadArea.addEventListener('dragover', e => {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+    });
 
-        imageUpload.addEventListener('change', e => handleFiles(e.target.files));
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
 
-        uploadArea.addEventListener('dragover', e => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
+    uploadArea.addEventListener('drop', e => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        handleFiles(e.dataTransfer.files);
+    });
 
-        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
-
-        uploadArea.addEventListener('drop', e => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            handleFiles(e.dataTransfer.files);
-        });
-
-        // Start
-        loadModel();
-    </script>
-</body>
-</html>
+    loadModel();
+</script>
