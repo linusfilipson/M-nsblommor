@@ -3,117 +3,329 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Blomklassificering med TensorFlow.js</title>
+    <title>Blomdetektor – AI Klassificering</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --primary: #6c5ce7;
+            --primary-dark: #5649c0;
+            --success: #00b894;
+            --danger: #e74c3c;
+            --light: #f5f6fa;
+            --dark: #2d3436;
+            --gray: #636e72;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #f0f4ff 0%, #e0eaff 100%);
+            color: var(--dark);
+            min-height: 100vh;
+            padding: 20px 15px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 700px;
             margin: 0 auto;
-            padding: 20px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.08);
+            overflow: hidden;
         }
-        #status {
-            border: 1px solid #ccc;
-            padding: 10px;
-            margin-bottom: 20px;
-            background-color: #f0f0f0;
-        }
-        #upload {
-            margin-bottom: 20px;
-        }
-        #preview {
-            max-width: 300px;
-            margin-bottom: 20px;
-        }
-        #result {
-            font-weight: bold;
-        }
-        footer {
-            margin-top: 40px;
+
+        header {
+            background: var(--primary);
+            color: white;
+            padding: 2.5rem 2rem;
             text-align: center;
-            font-size: 0.9em;
-            color: #666;
+        }
+
+        header h1 {
+            font-size: 2.2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        header p {
+            opacity: 0.9;
+            font-size: 1.05rem;
+        }
+
+        .content {
+            padding: 2.5rem 2rem;
+        }
+
+        #status {
+            background: var(--light);
+            border-radius: 12px;
+            padding: 1.2rem;
+            margin-bottom: 2rem;
+            font-weight: 500;
+            text-align: center;
+            border: 1px solid #dfe6e9;
+            transition: all 0.3s ease;
+        }
+
+        #status.loading {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        #status.success {
+            background: #d4edda;
+            color: #155724;
+            border-color: #c3e6cb;
+        }
+
+        #status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border-color: #f5c6cb;
+        }
+
+        .upload-area {
+            border: 3px dashed #a29bfe;
+            border-radius: 16px;
+            padding: 3rem 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 1.5rem;
+            background: rgba(108, 92, 231, 0.03);
+        }
+
+        .upload-area:hover {
+            border-color: var(--primary);
+            background: rgba(108, 92, 231, 0.08);
+            transform: translateY(-3px);
+        }
+
+        .upload-area.dragover {
+            border-color: var(--primary);
+            background: rgba(108, 92, 231, 0.15);
+            box-shadow: 0 0 15px rgba(108, 92, 231, 0.3);
+        }
+
+        #imageUpload {
+            display: none;
+        }
+
+        .upload-text {
+            font-size: 1.2rem;
+            color: var(--gray);
+            margin: 1rem 0;
+        }
+
+        .upload-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.9rem 2rem;
+            border-radius: 50px;
+            font-size: 1.05rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 1rem;
+        }
+
+        .upload-btn:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+
+        #preview-container {
+            margin: 2rem 0;
+            text-align: center;
+            display: none;
+        }
+
+        #preview {
+            max-width: 100%;
+            max-height: 380px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+            border: 8px solid white;
+        }
+
+        #result {
+            margin-top: 2rem;
+            padding: 1.8rem;
+            background: var(--light);
+            border-radius: 16px;
+            font-size: 1.3rem;
+            text-align: center;
+            font-weight: 600;
+            border-left: 6px solid var(--primary);
+            display: none;
+        }
+
+        #result strong {
+            color: var(--primary);
+            font-size: 1.6rem;
+        }
+
+        footer {
+            text-align: center;
+            padding: 1.8rem;
+            color: var(--gray);
+            font-size: 0.95rem;
+            border-top: 1px solid #eee;
+        }
+
+        @media (max-width: 600px) {
+            header h1 { font-size: 1.8rem; }
+            .content { padding: 2rem 1.5rem; }
         }
     </style>
 </head>
 <body>
-    <h1>Blomklassificering</h1>
-    <p>Ladda upp en bild på en blomma för att se vilken art det är och med vilken sannolikhet.</p>
+    <div class="container">
+        <header>
+            <h1>Blomdetektor 🌸</h1>
+            <p>Ladda upp en bild – AI:n berättar vilken blomma det är!</p>
+        </header>
 
-    <div id="status">Laddar modell...</div>
+        <div class="content">
+            <div id="status">Laddar modell... Växla tålamod aktiverat 🌱</div>
 
-    <div id="upload">
-        <input type="file" id="imageUpload" accept="image/*">
+            <div class="upload-area" id="uploadArea">
+                <input type="file" id="imageUpload" accept="image/*">
+                <div class="upload-text">
+                    Dra & släpp en bild här<br>eller
+                </div>
+                <button type="button" class="upload-btn">Välj bild från datorn</button>
+            </div>
+
+            <div id="preview-container">
+                <img id="preview" src="" alt="Uppladdad blomma">
+            </div>
+
+            <div id="result"></div>
+        </div>
+
+        <footer>
+            Skapad av Grok X. xAI
+        </footer>
     </div>
 
-    <img id="preview" src="" alt="Förhandsvisning av bilden" style="display: none;">
-
-    <div id="result"></div>
-
-    <footer>
-        Skapad av Grok X. xAI
-    </footer>
-
     <script>
-        // Använd en publik modell för blomklassificering (baserad på TF Flowers dataset)
         const MODEL_URL = 'https://raw.githubusercontent.com/masaok/flowerid-next/main/public/tfjs_model/model.json';
+        const CLASSES = ['daisy', 'dandelion', 'roses', 'sunflowers', 'tulips'];
 
-        const CLASSES = ['daisy', 'dandelion', 'roses', 'sunflowers', 'tulips']; // Standardklasser för TF Flowers
-
-        let model;
-        const statusDiv = document.getElementById('status');
+        let model = null;
+        const status = document.getElementById('status');
+        const uploadArea = document.getElementById('uploadArea');
         const imageUpload = document.getElementById('imageUpload');
+        const previewContainer = document.getElementById('preview-container');
         const preview = document.getElementById('preview');
-        const resultDiv = document.getElementById('result');
+        const result = document.getElementById('result');
+        const uploadBtn = document.querySelector('.upload-btn');
+
+        function setStatus(text, type = '') {
+            status.textContent = text;
+            status.className = type; // loading, success, error
+        }
 
         async function loadModel() {
             try {
-                statusDiv.textContent = 'Laddar modell...';
+                setStatus('Laddar AI-modellen... 🌷', 'loading');
                 model = await tf.loadLayersModel(MODEL_URL);
-                statusDiv.textContent = 'Modellen är laddad och redo!';
-            } catch (error) {
-                statusDiv.textContent = 'Fel vid laddning av modell: ' + error.message;
+                setStatus('Modellen är klar! Ladda upp en blomma 💐', 'success');
+            } catch (err) {
+                setStatus('Kunde inte ladda modellen: ' + err.message, 'error');
+                console.error(err);
             }
         }
 
-        function preprocessImage(image) {
-            // Anta att modellen förväntar sig 224x224 bilder; justera om nödvändigt baserat på modellen
-            let tensor = tf.browser.fromPixels(image)
+        function preprocess(img) {
+            return tf.browser.fromPixels(img)
                 .resizeNearestNeighbor([224, 224])
                 .toFloat()
-                .div(tf.scalar(255.0)) // Normalisera till [0,1]
+                .div(255.0)
                 .expandDims();
-            return tensor;
         }
 
-        async function predict(image) {
+        async function predictImage(imgElement) {
             if (!model) {
-                resultDiv.textContent = 'Modellen är inte laddad ännu.';
+                result.textContent = 'Modellen laddas fortfarande...';
+                result.style.display = 'block';
                 return;
             }
-            const tensor = preprocessImage(image);
-            const predictions = await model.predict(tensor).data();
-            const maxProb = Math.max(...predictions);
-            const classIndex = predictions.indexOf(maxProb);
-            const className = CLASSES[classIndex];
-            resultDiv.textContent = `Förutsagd blomart: ${className} med sannolikhet ${(maxProb * 100).toFixed(2)}%`;
+
+            try {
+                const tensor = preprocess(imgElement);
+                const preds = await model.predict(tensor).data();
+                tensor.dispose();
+
+                let maxProb = -1;
+                let bestClass = -1;
+                for (let i = 0; i < preds.length; i++) {
+                    if (preds[i] > maxProb) {
+                        maxProb = preds[i];
+                        bestClass = i;
+                    }
+                }
+
+                const confidence = (maxProb * 100).toFixed(1);
+                const flower = CLASSES[bestClass];
+
+                result.innerHTML = `Det här är en <strong>${flower}</strong><br>med ${confidence}% säkerhet 🌼`;
+                result.style.display = 'block';
+            } catch (err) {
+                result.textContent = 'Något gick fel vid förutsägelsen...';
+                result.style.display = 'block';
+            }
         }
 
-        imageUpload.addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    preview.src = e.target.result;
-                    preview.style.display = 'block';
-                    const img = new Image();
-                    img.src = e.target.result;
-                    img.onload = () => predict(img);
-                };
-                reader.readAsDataURL(file);
+        function handleFiles(files) {
+            if (!files || files.length === 0) return;
+            const file = files[0];
+            if (!file.type.startsWith('image/')) {
+                alert('Välj en bild tack!');
+                return;
             }
+
+            const reader = new FileReader();
+            reader.onload = e => {
+                preview.src = e.target.result;
+                previewContainer.style.display = 'block';
+
+                const img = new Image();
+                img.onload = () => predictImage(img);
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Events
+        uploadArea.addEventListener('click', () => imageUpload.click());
+        uploadBtn.addEventListener('click', () => imageUpload.click());
+
+        imageUpload.addEventListener('change', e => handleFiles(e.target.files));
+
+        uploadArea.addEventListener('dragover', e => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
         });
 
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', e => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        // Start
         loadModel();
     </script>
 </body>
