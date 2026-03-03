@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blomklassificering med TensorFlow.js</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #status {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 20px;
+            background-color: #f0f0f0;
+        }
+        #upload {
+            margin-bottom: 20px;
+        }
+        #preview {
+            max-width: 300px;
+            margin-bottom: 20px;
+        }
+        #result {
+            font-weight: bold;
+        }
+        footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Blomklassificering</h1>
+    <p>Ladda upp en bild på en blomma för att se vilken art det är och med vilken sannolikhet.</p>
+
+    <div id="status">Laddar modell...</div>
+
+    <div id="upload">
+        <input type="file" id="imageUpload" accept="image/*">
+    </div>
+
+    <img id="preview" src="" alt="Förhandsvisning av bilden" style="display: none;">
+
+    <div id="result"></div>
+
+    <footer>
+        Skapad av Grok X. xAI
+    </footer>
+
+    <script>
+        // Anta att modellen är uppladdad till GitHub under mappen tfjs_model.
+        // Exempel-URL: Byt ut mot din faktiska GitHub-URL, t.ex. https://raw.githubusercontent.com/ditt-användarnamn/ditt-repo/main/tfjs_model/model.json
+        // Först ladda upp det zippade arkivet med modellen till GitHub och unzippa till mappen tfjs_model.
+        const MODEL_URL = 'https://raw.githubusercontent.com/ditt-användarnamn/ditt-repo/main/tfjs_model/model.json'; // Byt ut mot din URL
+
+        const CLASSES = ['daisy', 'dandelion', 'roses', 'sunflowers', 'tulips']; // Anta standardklasser för blommor; justera efter din modell
+
+        let model;
+        const statusDiv = document.getElementById('status');
+        const imageUpload = document.getElementById('imageUpload');
+        const preview = document.getElementById('preview');
+        const resultDiv = document.getElementById('result');
+
+        async function loadModel() {
+            try {
+                statusDiv.textContent = 'Laddar modell...';
+                model = await tf.loadLayersModel(MODEL_URL);
+                statusDiv.textContent = 'Modellen är laddad och redo!';
+            } catch (error) {
+                statusDiv.textContent = 'Fel vid laddning av modell: ' + error.message;
+            }
+        }
+
+        function preprocessImage(image) {
+            // Anta att modellen förväntar sig 224x224 bilder; justera efter din modell
+            let tensor = tf.browser.fromPixels(image)
+                .resizeNearestNeighbor([224, 224])
+                .toFloat()
+                .div(tf.scalar(255.0)) // Normalisera till [0,1]
+                .expandDims();
+            return tensor;
+        }
+
+        async function predict(image) {
+            if (!model) {
+                resultDiv.textContent = 'Modellen är inte laddad ännu.';
+                return;
+            }
+            const tensor = preprocessImage(image);
+            const predictions = await model.predict(tensor).data();
+            const maxProb = Math.max(...predictions);
+            const classIndex = predictions.indexOf(maxProb);
+            const className = CLASSES[classIndex];
+            resultDiv.textContent = `Förutsagd blomart: ${className} med sannolikhet ${ (maxProb * 100).toFixed(2) }%`;
+        }
+
+        imageUpload.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                    const img = new Image();
+                    img.src = e.target.result;
+                    img.onload = () => predict(img);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        loadModel();
+    </script>
+</body>
+</html>
